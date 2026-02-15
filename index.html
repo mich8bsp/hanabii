@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hanabii</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #e0e0e0;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* UI Overlay */
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #ui-overlay > * {
+      pointer-events: auto;
+    }
+
+    /* Menu Screen */
+    #menu-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+    }
+
+    #menu-screen h1 {
+      font-size: 4rem;
+      font-weight: 300;
+      letter-spacing: 0.6em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 0 40px rgba(255, 180, 100, 0.5), 0 0 80px rgba(255, 120, 50, 0.2);
+      animation: titleGlow 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes titleGlow {
+      from { text-shadow: 0 0 40px rgba(255, 180, 100, 0.5), 0 0 80px rgba(255, 120, 50, 0.2); }
+      to { text-shadow: 0 0 60px rgba(255, 200, 130, 0.7), 0 0 120px rgba(255, 140, 70, 0.3); }
+    }
+
+    #menu-screen .subtitle {
+      font-size: 1rem;
+      letter-spacing: 0.3em;
+      color: rgba(255, 255, 255, 0.4);
+      margin-top: -1rem;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      padding: 0.8rem 2.5rem;
+      font-size: 1rem;
+      letter-spacing: 0.15em;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 180, 100, 0.4);
+      box-shadow: 0 0 20px rgba(255, 180, 100, 0.15);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    /* Analyzing Screen */
+    #analyzing-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+    }
+
+    #analyzing-screen .status-text {
+      font-size: 1.2rem;
+      letter-spacing: 0.2em;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    #analyzing-screen .progress-bar {
+      width: 300px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    #analyzing-screen .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(255, 180, 100, 0.8), rgba(255, 120, 200, 0.8));
+      transition: width 0.3s ease;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      pointer-events: none;
+    }
+
+    #sync-display {
+      position: absolute;
+      top: 2rem;
+      right: 2rem;
+      font-size: 1.8rem;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    #sync-display .sync-value {
+      font-size: 2.4rem;
+      font-weight: 200;
+    }
+
+    #song-progress {
+      position: absolute;
+      bottom: 1rem;
+      left: 5%;
+      width: 90%;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 1px;
+    }
+
+    #song-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 1px;
+      transition: width 0.1s linear;
+    }
+
+    /* Results Screen */
+    #results-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+    }
+
+    #results-screen .final-sync {
+      font-size: 5rem;
+      font-weight: 200;
+      color: #fff;
+      text-shadow: 0 0 40px rgba(255, 180, 100, 0.5);
+    }
+
+    #results-screen .rating-label {
+      font-size: 1.5rem;
+      letter-spacing: 0.3em;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    #results-screen .btn-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Countdown */
+    #countdown {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 6rem;
+      font-weight: 200;
+      color: rgba(255, 255, 255, 0.8);
+      text-shadow: 0 0 40px rgba(255, 180, 100, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Three.js canvas will be inserted here -->
+
+    <div id="ui-overlay">
+      <!-- Menu -->
+      <div id="menu-screen">
+        <h1>Hanabii</h1>
+        <div class="subtitle">a music visualization experience</div>
+        <button class="btn" id="choose-song-btn">Choose a Song</button>
+        <input type="file" id="file-input" accept=".mp3,.wav,.ogg,.flac" />
+      </div>
+
+      <!-- Analyzing -->
+      <div id="analyzing-screen">
+        <div class="status-text" id="analyzing-status">Listening to your song...</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="analyzing-progress"></div>
+        </div>
+      </div>
+
+      <!-- Countdown -->
+      <div id="countdown"></div>
+
+      <!-- HUD -->
+      <div id="hud">
+        <div id="sync-display">
+          <span class="sync-value" id="sync-value">100</span>%
+        </div>
+        <div id="song-progress">
+          <div id="song-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="results-screen">
+        <div class="final-sync" id="final-sync-value">87%</div>
+        <div class="rating-label" id="rating-label">In the Flow</div>
+        <div class="btn-group">
+          <button class="btn" id="play-again-btn">Play Again</button>
+          <button class="btn" id="choose-another-btn">Choose Another Song</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
