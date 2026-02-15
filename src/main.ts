@@ -13,6 +13,7 @@ import { analyzeAudio } from './audio/analyzer';
 import { extractRealtimeFeatures } from './audio/realtime';
 import { visualDirector } from './visuals/visual-director';
 import { postProcessing } from './visuals/post-processing';
+import { hoops } from './entities/hoops';
 import type { SongMap } from './audio/structures';
 
 // ─── DOM Elements ───────────────────────────────────────────
@@ -226,6 +227,8 @@ function loop(timestamp: number): void {
     // Update HUD
     syncValueEl.textContent = String(Math.round(sync * 100));
     songProgressFill.style.width = `${(songTime / duration) * 100}%`;
+    const hoopCountEl = document.getElementById('hoop-count');
+    if (hoopCountEl) hoopCountEl.textContent = String(hoops.hoopsPassed);
   }
 
   postProcessing.render();
@@ -237,6 +240,12 @@ function endSong(): void {
 
   finalSyncValue.textContent = `${score}%`;
   ratingLabel.textContent = rating;
+
+  // Hoop stats
+  const hoopStatsEl = document.getElementById('hoop-stats');
+  if (hoopStatsEl) {
+    hoopStatsEl.textContent = `Hoops: ${hoops.hoopsPassed} / ${hoops.hoopsTotal}`;
+  }
 
   gameState.transition('RESULTS');
   visualDirector.dispose();

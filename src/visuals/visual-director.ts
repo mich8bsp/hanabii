@@ -6,12 +6,14 @@ import { fireflies } from './fireflies';
 import { lanterns } from './lanterns';
 import { aurora } from './aurora';
 import { stars } from './stars';
+import { hoops, type Hoop } from '../entities/hoops';
 import { orb } from '../entities/orb';
 import { clamp, mapRange } from '../utils/math';
 
 /**
  * Master conductor that maps audio analysis data to visual events.
- * Decides what to trigger, when, and with what intensity.
+ * Hoops are placed at beat positions; fireworks fire when the orb
+ * passes through a hoop.
  */
 class VisualDirector {
   private songMap!: SongMap;
@@ -27,20 +29,16 @@ class VisualDirector {
     this.currentSectionIndex = 0;
     this.lastSectionLabel = '';
 
-    // Initialize color palette
     colorPalette.init(songMap);
 
-    // Initialize sub-systems
     fireworks.init();
     fireflies.init();
     lanterns.init();
     aurora.init();
     stars.init();
+    hoops.init(songMap);
   }
 
-  /**
-   * Called every frame during PLAYING state.
-   */
   update(
     currentTime: number,
     dt: number,
@@ -50,20 +48,26 @@ class VisualDirector {
   ): void {
     const orbPos = orb.position;
 
-    // --- Process beats ---
-    this.processBeats(currentTime, orbPos, sync);
+    // --- Process beats (orb pulse only, no fireworks) ---
+    this.processBeats(currentTime);
 
-    // --- Process onsets ---
-    this.processOnsets(currentTime, realtime, sync);
+    // --- Process onsets (star twinkle) ---
+    this.processOnsets(currentTime);
 
-    // --- Process sections ---
+    // --- Process sections (lanterns + palette) ---
     this.processSections(currentTime, orbPos);
+
+    // --- Update hoops and check for passage ---
+    const passedHoops = hoops.update(dt, elapsed, orbPos, sync);
+
+    // --- Fireworks on successful hoop passage ---
+    for (const hoop of passedHoops) {
+      this.fireworksOnHoop(hoop);
+    }
 
     // --- Update color palette ---
     colorPalette.update(dt, realtime.rms);
     const palette = sync > 0.5 ? colorPalette.palette : colorPalette.getDesaturated(sync);
-
-    // --- Update visual systems ---
 
     // Fireworks
     fireworks.update(dt);
@@ -84,52 +88,63 @@ class VisualDirector {
     // Stars
     stars.update(dt, elapsed, realtime.zcr);
 
-    // Orb color
+    // Hoop color from palette
+    hoops.setColor(palette.accent);
+
+    // Orb
     orb.setColor(palette.primary);
     orb.lerpScaleBack(dt);
-
-    // Orb glow intensity from RMS
-    const glowIntensity = 1 + realtime.rms * 8;
-    orb.glowLight.intensity = glowIntensity;
+    orb.glowLight.intensity = 1 + realtime.rms * 8;
   }
 
-  private processBeats(currentTime: number, orbPos: THREE.Vector3, sync: number): void {
+  /**
+   * Fire fireworks from the hoop position when the orb passes through.
+   */
+  private fireworksOnHoop(hoop: Hoop): void {
+    const palette = colorPalette.palette;
+    const pos = hoop.position.clone();
+
+    // Main burst at hoop position
+    fireworks.burst(pos, hoop.strength, hoop.isDownbeat, palette, 1.0);
+
+    // Extra bursts for downbeats (more spectacular)
+    if (hoop.isDownbeat) {
+      fireworks.burst(
+        pos.clone().add(new THREE.Vector3(0, 2, 0)),
+        hoop.strength * 0.8,
+        false,
+        palette,
+        1.0
+      );
+    }
+
+    // Star twinkle on pass
+    stars.triggerTwinkle(40, hoop.strength);
+
+    // Orb pulse
+    orb.beatPulse(hoop.strength);
+  }
+
+  private processBeats(currentTime: number): void {
     const beats = this.songMap.beats;
     while (this.nextBeatIndex < beats.length && beats[this.nextBeatIndex].time <= currentTime) {
       const beat = beats[this.nextBeatIndex];
-
-      // Orb pulse on beat
-      orb.beatPulse(beat.strength);
-
-      // Fireworks on strong beats
-      if (beat.strength > 0.4) {
-        const burstPos = new THREE.Vector3(
-          orbPos.x + (Math.random() - 0.5) * 15,
-          orbPos.y + Math.random() * 8 + 2,
-          orbPos.z - Math.random() * 20 - 5
-        );
-        fireworks.burst(burstPos, beat.strength, beat.isDownbeat, colorPalette.palette, sync);
-      }
-
+      // Subtle orb pulse on every beat (visual rhythm)
+      orb.beatPulse(beat.strength * 0.4);
       this.nextBeatIndex++;
     }
   }
 
-  private processOnsets(currentTime: number, realtime: RealtimeFeatures, sync: number): void {
+  private processOnsets(currentTime: number): void {
     const onsets = this.songMap.onsets;
     while (this.nextOnsetIndex < onsets.length && onsets[this.nextOnsetIndex].time <= currentTime) {
       const onset = onsets[this.nextOnsetIndex];
-
-      // High-frequency onsets trigger star twinkle
       if (onset.frequencyBand === 'high') {
-        stars.triggerTwinkle(Math.floor(onset.strength * 30), onset.strength);
+        stars.triggerTwinkle(Math.floor(onset.strength * 20), onset.strength);
       }
-
-      // Very strong transients trigger shooting stars (rare)
-      if (onset.strength > 0.9 && Math.random() < 0.1) {
+      if (onset.strength > 0.9 && Math.random() < 0.08) {
         stars.triggerShootingStar();
       }
-
       this.nextOnsetIndex++;
     }
   }
@@ -138,14 +153,11 @@ class VisualDirector {
     const sections = this.songMap.sections;
     if (this.currentSectionIndex >= sections.length) return;
 
-    // Check if we've entered a new section
     for (let i = this.currentSectionIndex; i < sections.length; i++) {
       if (currentTime >= sections[i].startTime && currentTime < sections[i].endTime) {
         if (i !== this.currentSectionIndex || sections[i].label !== this.lastSectionLabel) {
           this.currentSectionIndex = i;
           this.lastSectionLabel = sections[i].label;
-
-          // Trigger section change visuals
           colorPalette.setSection(sections[i]);
           lanterns.release(orbPos, sections[i].label, 4 + Math.floor(sections[i].energy * 4));
         }
@@ -158,7 +170,6 @@ class VisualDirector {
     const contour = this.songMap.pitchContour;
     if (contour.length === 0) return 0.5;
 
-    // Find nearest pitch point
     let closest = contour[0];
     for (let i = 1; i < contour.length; i++) {
       if (Math.abs(contour[i].time - currentTime) < Math.abs(closest.time - currentTime)) {
@@ -169,7 +180,6 @@ class VisualDirector {
     }
 
     if (closest.confidence < 0.2) return 0.5;
-    // Normalize frequency (80-800 Hz) to 0-1
     return clamp(mapRange(closest.frequency, 80, 800, 0, 1), 0, 1);
   }
 
@@ -191,6 +201,7 @@ class VisualDirector {
     lanterns.dispose();
     aurora.dispose();
     stars.dispose();
+    hoops.dispose();
   }
 }
 

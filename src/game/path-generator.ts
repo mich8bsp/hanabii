@@ -3,10 +3,10 @@ import type { SongMap, PathPoint } from '../audio/structures';
 import { clamp, mapRange } from '../utils/math';
 
 const FORWARD_SPEED = 8; // must match orb.ts
-const LATERAL_RANGE = 12;
-const VERTICAL_RANGE = 6;
-const VERTICAL_BASE = 1;
-const SMOOTHING_WINDOW = 5;
+const LATERAL_RANGE = 8; // reduced for gentler curves
+const VERTICAL_RANGE = 4;
+const VERTICAL_BASE = 2;
+const SMOOTHING_WINDOW = 25; // much wider smoothing for fluid curves
 
 /**
  * Generate the ideal path from the SongMap analysis data.
@@ -68,8 +68,10 @@ export function generateIdealPath(songMap: SongMap): PathPoint[] {
     });
   }
 
-  // Smooth the path
-  return smoothPath(rawPoints, SMOOTHING_WINDOW);
+  // Multiple smoothing passes for very fluid curves
+  let result = smoothPath(rawPoints, SMOOTHING_WINDOW);
+  result = smoothPath(result, Math.floor(SMOOTHING_WINDOW / 2));
+  return result;
 }
 
 function interpolatePitch(

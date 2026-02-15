@@ -4,35 +4,42 @@ import { input } from '../game/input';
 import { lerp, clamp } from '../utils/math';
 
 const ORB_RADIUS = 0.4;
-const MOVE_SPEED = 15; // units per second
-const MOUSE_INFLUENCE = 0.6;
-const KEYBOARD_INFLUENCE = 0.4;
-const SMOOTHING = 0.08;
 const FORWARD_SPEED = 8; // constant forward velocity (negative Z)
-const LATERAL_BOUNDS = 20; // max X distance
-const VERTICAL_BOUNDS = 12; // max Y distance
+const LATERAL_BOUNDS = 15;
+const VERTICAL_MIN = -3;
+const VERTICAL_MAX = 10;
+
+/**
+ * Movement tuning for a floaty, fluid feel.
+ * Instead of snapping to mouse, the orb accelerates toward the target
+ * with velocity damping, giving inertia and momentum.
+ */
+const MOUSE_RANGE_X = 12;
+const MOUSE_RANGE_Y = 7;
+const ACCELERATION = 35;
+const DAMPING = 4.5; // velocity friction
+const KEYBOARD_ACCEL = 25;
 
 class Orb {
   mesh!: THREE.Mesh;
   glowLight!: THREE.PointLight;
   trail!: THREE.Line;
 
-  /** The actual rendered position (smoothly interpolated) */
+  /** The actual rendered position */
   readonly position = new THREE.Vector3(0, 0, 0);
 
-  /** Target position based on raw input */
-  private targetPosition = new THREE.Vector3(0, 0, 0);
+  /** Velocity for inertia-based movement */
+  private velocity = new THREE.Vector2(0, 0);
 
   /** Trail history */
   private trailPositions: THREE.Vector3[] = [];
-  private trailMaxLength = 80;
+  private trailMaxLength = 100;
 
   /** Pulse boost state */
   private pulseTimer = 0;
   private baseEmissiveIntensity = 0.5;
 
   init(): void {
-    // Orb mesh
     const geometry = new THREE.SphereGeometry(ORB_RADIUS, 32, 32);
     const material = new THREE.MeshStandardMaterial({
       color: 0xffcc88,
@@ -46,11 +53,9 @@ class Orb {
     this.mesh = new THREE.Mesh(geometry, material);
     sceneManager.scene.add(this.mesh);
 
-    // Glow point light attached to orb
     this.glowLight = new THREE.PointLight(0xffaa55, 2, 30, 2);
     this.mesh.add(this.glowLight);
 
-    // Trail line
     const trailGeometry = new THREE.BufferGeometry();
     const trailPositions = new Float32Array(this.trailMaxLength * 3);
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
@@ -69,29 +74,49 @@ class Orb {
 
   update(dt: number, songPlaying: boolean): void {
     if (songPlaying) {
-      // Move forward constantly
-      this.targetPosition.z -= FORWARD_SPEED * dt;
+      // Forward motion is constant and direct (not velocity-based)
+      this.position.z -= FORWARD_SPEED * dt;
 
-      // Mouse-driven lateral/vertical (maps NDC to world offset)
-      const mouseX = input.mouseNDC.x * LATERAL_BOUNDS * MOUSE_INFLUENCE;
-      const mouseY = input.mouseNDC.y * VERTICAL_BOUNDS * MOUSE_INFLUENCE;
+      // Compute target from mouse (where the player wants to be)
+      const targetX = input.mouseNDC.x * MOUSE_RANGE_X;
+      const targetY = input.mouseNDC.y * MOUSE_RANGE_Y;
 
-      // Keyboard/gamepad additive
-      this.targetPosition.x += input.movement.x * MOVE_SPEED * KEYBOARD_INFLUENCE * dt;
-      this.targetPosition.y += input.movement.y * MOVE_SPEED * KEYBOARD_INFLUENCE * dt;
+      // Acceleration toward mouse target
+      const dx = targetX - this.position.x;
+      const dy = targetY - this.position.y;
+      this.velocity.x += dx * ACCELERATION * dt;
+      this.velocity.y += dy * ACCELERATION * dt;
 
-      // Blend mouse position
-      this.targetPosition.x = lerp(this.targetPosition.x, mouseX + this.position.z * 0 , 3 * dt);
-      this.targetPosition.y = lerp(this.targetPosition.y, mouseY, 3 * dt);
+      // Keyboard/gamepad adds direct acceleration
+      this.velocity.x += input.movement.x * KEYBOARD_ACCEL * dt;
+      this.velocity.y += input.movement.y * KEYBOARD_ACCEL * dt;
 
-      // Clamp
-      this.targetPosition.x = clamp(this.targetPosition.x, -LATERAL_BOUNDS, LATERAL_BOUNDS);
-      this.targetPosition.y = clamp(this.targetPosition.y, -VERTICAL_BOUNDS / 2, VERTICAL_BOUNDS);
+      // Damping (friction) for smooth deceleration
+      this.velocity.x *= Math.exp(-DAMPING * dt);
+      this.velocity.y *= Math.exp(-DAMPING * dt);
+
+      // Apply velocity
+      this.position.x += this.velocity.x * dt;
+      this.position.y += this.velocity.y * dt;
+
+      // Soft clamp with elastic bounce-back
+      if (this.position.x > LATERAL_BOUNDS) {
+        this.velocity.x -= (this.position.x - LATERAL_BOUNDS) * 10 * dt;
+      } else if (this.position.x < -LATERAL_BOUNDS) {
+        this.velocity.x -= (this.position.x + LATERAL_BOUNDS) * 10 * dt;
+      }
+      if (this.position.y > VERTICAL_MAX) {
+        this.velocity.y -= (this.position.y - VERTICAL_MAX) * 10 * dt;
+      } else if (this.position.y < VERTICAL_MIN) {
+        this.velocity.y -= (this.position.y - VERTICAL_MIN) * 10 * dt;
+      }
     }
 
-    // Smooth interpolation
-    this.position.lerp(this.targetPosition, SMOOTHING);
     this.mesh.position.copy(this.position);
+
+    // Subtle tilt based on velocity for visual feedback
+    this.mesh.rotation.z = -this.velocity.x * 0.02;
+    this.mesh.rotation.x = this.velocity.y * 0.015;
 
     // Pulse boost
     if (input.pulseBoost && this.pulseTimer <= 0) {
@@ -108,11 +133,9 @@ class Orb {
       this.glowLight.intensity = 2;
     }
 
-    // Update trail
     this.updateTrail();
   }
 
-  /** Set the orb color/emissive to match current palette */
   setColor(color: THREE.Color): void {
     const mat = this.mesh.material as THREE.MeshStandardMaterial;
     mat.color.copy(color);
@@ -121,14 +144,11 @@ class Orb {
     (this.trail.material as THREE.LineBasicMaterial).color.copy(color);
   }
 
-  /** Pulsate the orb on beat */
   beatPulse(strength: number): void {
     const scale = 1 + strength * 0.3;
     this.mesh.scale.setScalar(scale);
-    // It will naturally lerp back via update
   }
 
-  /** Lerp scale back to 1 each frame */
   lerpScaleBack(dt: number): void {
     const s = lerp(this.mesh.scale.x, 1, 5 * dt);
     this.mesh.scale.setScalar(s);
@@ -136,9 +156,10 @@ class Orb {
 
   reset(): void {
     this.position.set(0, 0, 0);
-    this.targetPosition.set(0, 0, 0);
+    this.velocity.set(0, 0);
     this.mesh.position.set(0, 0, 0);
     this.mesh.scale.setScalar(1);
+    this.mesh.rotation.set(0, 0, 0);
     this.trailPositions = [];
     this.trail.geometry.setDrawRange(0, 0);
     this.pulseTimer = 0;

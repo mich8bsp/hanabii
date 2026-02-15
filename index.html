@@ -212,6 +212,22 @@
       color: rgba(255, 255, 255, 0.6);
     }
 
+    #results-screen .hoop-stats {
+      font-size: 1.1rem;
+      letter-spacing: 0.2em;
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    #hoop-hud {
+      position: absolute;
+      top: 2rem;
+      left: 2rem;
+      font-size: 1.1rem;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
     #results-screen .btn-group {
       display: flex;
       gap: 1rem;
@@ -268,6 +284,9 @@
         <div id="sync-display">
           <span class="sync-value" id="sync-value">100</span>%
         </div>
+        <div id="hoop-hud">
+          <span id="hoop-count">0</span> hoops
+        </div>
         <div id="song-progress">
           <div id="song-progress-fill"></div>
         </div>
@@ -277,6 +296,7 @@
       <div id="results-screen">
         <div class="final-sync" id="final-sync-value">87%</div>
         <div class="rating-label" id="rating-label">In the Flow</div>
+        <div class="hoop-stats" id="hoop-stats"></div>
         <div class="btn-group">
           <button class="btn" id="play-again-btn">Play Again</button>
           <button class="btn" id="choose-another-btn">Choose Another Song</button>
