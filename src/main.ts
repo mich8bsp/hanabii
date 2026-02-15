@@ -215,7 +215,7 @@ function loop(timestamp: number): void {
     }
 
     // Update guide path
-    guidePath.update(currentSongMap.idealPath, songTime, sync);
+    guidePath.update(currentSongMap.idealPath, songTime, sync, orb.position, elapsed);
 
     // Update all visuals
     visualDirector.update(songTime, dt, elapsed, realtime, sync);
